@@ -5,23 +5,110 @@ const Board = {
   generate: (size = 10, cellFunc) => {
     return _.map(
       (new Array(size)),
-      () => { return (new Array(size)).fill(cellFunc()) }
+      (i, xidx) => {
+        return _.map(
+          (new Array(size)),
+          (j, yidx) => { return cellFunc(xidx, yidx) }
+        )
+      }
     )
+  },
+
+  setupRandomBoard: (board) => {
+    const shipSizes = [5,4,3,3,2];
+    const directions = [
+      [0 , 1], // up
+      [0 ,-1], // down
+      [1 , 0], // right
+      [-1, 0]  // left
+    ];
+    let ships = [];
+
+    _.each(shipSizes, (size, shipIdx) => {
+      let found = false, availableIdx = 0;
+      let availableCells = _.chain(
+        _.flatten(board).filter((cell) => { return cell.shipIdx === null })
+      ).shuffle().value();
+
+      while (!found && availableIdx < availableCells.length) {
+        let dirIdx = 0, cell = availableCells[availableIdx], coords = null;
+
+        while (coords === null && dirIdx < directions.length) {
+          let dir = directions[dirIdx], boardSize = board[0].length;
+          // calculate coordinates and validity of ship in this direction
+          const possibleCoords = _.map(
+            (new Array(size)),
+            (i, iIdx) => {
+              return {
+                x: cell.x + dir[0] * iIdx,
+                y: cell.y + dir[1] * iIdx
+              }
+            }
+          );
+          const validShip = _.reduce(
+            possibleCoords,
+            (valid, coord) => {
+              return valid &&
+                (coord.x < boardSize && coord.x >= 0) &&
+                (coord.y < boardSize && coord.y >= 0) &&
+                (board[coord.x][coord.y].shipIdx === null);
+            },
+            true
+          );
+
+          if (validShip) {
+            coords = possibleCoords;
+
+            // mark cells on board with ship id
+            _.each(coords, (coord) => {
+              let cell = board[coord.x][coord.y];
+              cell.shipIdx = shipIdx;
+              board[coord.x][coord.y] = cell;
+            });
+          } else dirIdx++;
+        }
+
+        if (coords !== null) {
+          ships.push(Ship.generate(coords))
+          found = true;
+          console.log('>>>FOUND SHIP', coords, ships, '\n\n');
+        } else { console.log('>>>NOT FOUND\n\n'); availableIdx++; }
+      }
+    });
+
+    return { board: board, ships: ships }
   }
 }
 
 /// CELL
 
 const Cell = {
-  blankPlayerCell: () => {
+  blankPlayerCell: (x, y) => {
     return {
+      x: x,
+      y: y,
       shipIdx: null,
       hitState: ''
-    };
+    }
   },
 
-  blankOpponentCell: () => {
-    return { hitState: '' };
+  blankOpponentCell: (x, y) => {
+    return {
+      x: x,
+      y: y,
+      hitState: ''
+    }
+  }
+}
+
+/// SHIP
+
+const Ship = {
+  generate: (coords) => {
+    return {
+      coordinates: coords,
+      hitState: ''
+    }
   }
 }
 
@@ -53,8 +140,11 @@ const newGame = () => {
 
 
 
+//debugger;
 const x = newGame();
 console.log(x);
+
+console.log(Board.setupRandomBoard(x.players[0].board));
 
 
 
