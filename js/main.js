@@ -1,164 +1,143 @@
-/// BOARD
-
 const Board = {
-  // returns a [size][size] array, filled with return value of cellFunc
-  generate: (size = 10, cellFunc) => {
-    return _.map(
-      (new Array(size)),
-      (i, xidx) => {
-        return _.map(
-          (new Array(size)),
-          (j, yidx) => { return cellFunc(xidx, yidx) }
-        )
-      }
+  Cell: {
+    generate: (x, y) => {
+      return { x, y, hitState: '', shipIdx: null }
+    }
+  },
+
+  // returns: 2d array of `Board.Cell`s
+  generate: (size = 10) => {
+    return _.map( new Array(size),
+      (i, x) => { return _.map( (new Array(size)),
+        (j, y) => { return Board.Cell.generate(x, y) }
+      )}
     )
   },
 
-  setupRandomBoard: (board) => {
-    const shipSizes = [5,4,3,3,2];
-    const directions = [
+  validCoordinate: (board, coord) => {
+    const boardSize = board[0].length;
+    return (
+      0 <= coord.x && coord.x < boardSize &&   // x coordinate is valid
+      0 <= coord.y && coord.y < boardSize &&   // y coordinate is valid
+      board[coord.x][coord.y].shipIdx === null // ship doesn't already exist at (x,y)
+    )
+  },
+
+  addShip: (board, ship) => {
+    _.each( ship.coordinates,
+      (coord) => { board[coord.x][coord.y].shipIdx = ship.idx; }
+    )
+  }
+}
+
+const Ship = {
+  // opts: { cell, direction, shipSize, shipIdx }
+  generate: (opts) => {
+    const coordinates = Ship._generateCoordinates(opts);
+    return { idx: opts.shipIdx, coordinates, sunk: false }
+  },
+
+  // opts: { cell, direction, shipSize, shipIdx }
+  // returns: [{x, y}, ...]
+  _generateCoordinates: (opts) => {
+    return _.map( new Array(opts.shipSize),
+      (i, idx) => {
+        return {
+          x: opts.cell.x + opts.direction[0] * idx,
+          y: opts.cell.y + opts.direction[1] * idx
+        }
+      }
+    )
+  },
+}
+
+const GameBoard = {
+  // set up ships randomly on a board
+  // returns: { board, ships }
+  generateRandomPlacement: (shipSizes = [5,4,3,3,2]) => {
+    let board = Board.generate(), ships = [];
+
+    _.each( shipSizes, (shipSize, shipIdx) => {
+      let availableIdx = 0;
+      const directions = GameBoard._shuffledDirections(),
+        availableCells = GameBoard._shuffledAvailableCells(board);
+
+      // "AVAILABLE CELLS LOOP"
+      while (ships.length === shipIdx && availableIdx < availableCells.length) {
+        let directionIdx = 0;
+        const cell = availableCells[availableIdx];
+
+        // "DIRECTIONS LOOP"
+        while (ships.length === shipIdx && directionIdx < directions.length) {
+          const direction = directions[directionIdx],
+            ship = Ship.generate({ cell, direction, shipSize, shipIdx }),
+            // check if all the ship's coordinates are valid for the board
+            validShip = _.reduce( ship.coordinates,
+              (valid, coord) => { return valid && Board.validCoordinate(board, coord) },
+              true
+            );
+
+          if (validShip) {
+            ships.push(ship);
+            Board.addShip(board, ship);
+          } else directionIdx++
+        }
+
+        availableIdx++
+      }
+    });
+
+    return { board, ships }
+  },
+
+  _shuffledDirections: () => {
+    return _.chain([
       [0 , 1], // up
       [0 ,-1], // down
       [1 , 0], // right
       [-1, 0]  // left
-    ];
-    let ships = [];
+    ]).shuffle().value()
+  },
 
-    _.each(shipSizes, (size, shipIdx) => {
-      let found = false, availableIdx = 0;
-      let availableCells = _.chain(
-        _.flatten(board).filter((cell) => { return cell.shipIdx === null })
-      ).shuffle().value();
-
-      while (!found && availableIdx < availableCells.length) {
-        let dirIdx = 0, cell = availableCells[availableIdx], coords = null;
-
-        while (coords === null && dirIdx < directions.length) {
-          let dir = directions[dirIdx], boardSize = board[0].length;
-          // calculate coordinates and validity of ship in this direction
-          const possibleCoords = _.map(
-            (new Array(size)),
-            (i, iIdx) => {
-              return {
-                x: cell.x + dir[0] * iIdx,
-                y: cell.y + dir[1] * iIdx
-              }
-            }
-          );
-          const validShip = _.reduce(
-            possibleCoords,
-            (valid, coord) => {
-              return valid &&
-                (coord.x < boardSize && coord.x >= 0) &&
-                (coord.y < boardSize && coord.y >= 0) &&
-                (board[coord.x][coord.y].shipIdx === null);
-            },
-            true
-          );
-
-          if (validShip) {
-            coords = possibleCoords;
-
-            // mark cells on board with ship id
-            _.each(coords, (coord) => {
-              let cell = board[coord.x][coord.y];
-              cell.shipIdx = shipIdx;
-              board[coord.x][coord.y] = cell;
-            });
-          } else dirIdx++;
-        }
-
-        if (coords !== null) {
-          ships.push(Ship.generate(coords))
-          found = true;
-          console.log('>>>FOUND SHIP', coords, ships, '\n\n');
-        } else { console.log('>>>NOT FOUND\n\n'); availableIdx++; }
-      }
-    });
-
-    return { board: board, ships: ships }
-  }
+  // TODO: convert to generator to improve performance
+  _shuffledAvailableCells: (board) => {
+    return _.chain(
+      _.flatten(board).filter((cell) => { return cell.shipIdx === null })
+    ).shuffle().value()
+  },
 }
 
-/// CELL
-
-const Cell = {
-  blankPlayerCell: (x, y) => {
-    return {
-      x: x,
-      y: y,
-      shipIdx: null,
-      hitState: ''
+const Game = {
+  Player: {
+    generate: (idx) => {
+      return { idx, ...GameBoard.generateRandomPlacement() }
     }
   },
 
-  blankOpponentCell: (x, y) => {
+  generate: () => {
     return {
-      x: x,
-      y: y,
-      hitState: ''
+      turn: 0,
+      currentPlayerIdx: 0,
+      winnerIdx: null,
+      players: [Game.Player.generate(0), Game.Player.generate(1)]
     }
-  }
-}
-
-/// SHIP
-
-const Ship = {
-  generate: (coords) => {
-    return {
-      coordinates: coords,
-      hitState: ''
-    }
-  }
-}
-
-/// PLAYER
-
-const Player = {
-  generateBlank: () => {
-    return {
-      board: Board.generate(10, Cell.blankPlayerCell),
-      ships: [],
-      opponent: {
-        board: Board.generate(10, Cell.blankOpponentCell),
-        shipsLeft: 0
-      }
-    }
-  }
-}
-
-/// GAME
-
-const newGame = () => {
-  return {
-    turn: 0,
-    currentPlayerIdx: 0,
-    winnerIdx: null,
-    players: [Player.generateBlank(), Player.generateBlank()]
-  }
+  },
 }
 
 
 
-//debugger;
-const x = newGame();
-console.log(x);
-
-console.log(Board.setupRandomBoard(x.players[0].board));
-
-
-
-
-
-
-
+const gameState = Game.generate();
+console.log(gameState);
 
 /*
 // REDUX
 
-const Store = {
-  Reducers: {}
-};
+const Store = {};
+Store.Reducers = {
+  attack: function(state, action) {
+
+  }
+}
 
 Store.Reducers.counter = (state = 0, action) => {
   switch (action.type) {
