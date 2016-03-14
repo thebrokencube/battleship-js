@@ -7,11 +7,11 @@ const Board = {
 
   // returns: 2d array of `Board.Cell`s
   generate: function(size = 10) {
-    return _.map( new Array(size),
-      (i, x) => { return _.map( (new Array(size)),
-        (j, y) => { return Board.Cell.generate(x, y) }
-      )}
-    )
+    return _.map(new Array(size), (i, x) => {
+      return _.map(new Array(size), (j, y) => {
+        return Board.Cell.generate(x, y)
+      })
+    })
   },
 
   validCoordinate: function(board, coordinate) {
@@ -24,9 +24,9 @@ const Board = {
   },
 
   addShip: function(board, ship) {
-    _.each( ship.coordinates,
-      (coord) => { board[coord.x][coord.y].shipIdx = ship.idx; }
-    )
+    _.each(ship.coordinates, (coord) => {
+      board[coord.x][coord.y].shipIdx = ship.idx
+    })
   }
 }
 
@@ -40,14 +40,12 @@ const Ship = {
   // opts: { cell, direction, shipSize, shipIdx }
   // returns: [{x, y}, ...]
   _generateCoordinates: function(opts) {
-    return _.map( new Array(opts.shipSize),
-      (i, idx) => {
-        return {
-          x: opts.cell.x + opts.direction[0] * idx,
-          y: opts.cell.y + opts.direction[1] * idx
-        }
+    return _.map(new Array(opts.shipSize), (i, idx) => {
+      return {
+        x: opts.cell.x + opts.direction[0] * idx,
+        y: opts.cell.y + opts.direction[1] * idx
       }
-    )
+    })
   },
 }
 
