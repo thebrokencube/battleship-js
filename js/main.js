@@ -147,13 +147,13 @@ const Game = {
 
   // perform an attack if possible
   attack: function(state, action) {
-    if (state.winnerIdx !== null) return state;
+    const { pidx, x, y } = action;
+    if (state.winnerIdx !== null || pidx === state.currentPlayerIdx) return state;
 
-    const { type, pidx, x, y } = action;
     let cell = _.clone(state.players[pidx].board[x][y]);
 
     // if attacking the correct player and the cell hasn't been hit yet
-    if (pidx !== state.currentPlayerIdx && !cell.hit) {
+    if (!cell.hit) {
       cell.hit = true;
       state.players[pidx].board[x][y] = cell;
       state.turn++;
@@ -210,7 +210,7 @@ BattleJS.Game = React.createClass({
       return <h1>Loading...</h1>;
     else {
       return (
-        <div>
+        <div onClick={this.clickHandler}>
           {this.renderGameOverState()}
           {this.renderPlayers()}
         </div>
@@ -246,8 +246,19 @@ BattleJS.Game = React.createClass({
     });
 
     return <div>{players}</div>;
-  }
+  },
 
+  clickHandler: function(e) {
+    const { pidx, cellX, cellY } = e.target.dataset;
+    if (pidx && cellX && cellY) {
+      Store.store.dispatch({
+        type: 'ATTACK',
+        pidx: parseInt(pidx),
+        x: parseInt(cellX),
+        y: parseInt(cellY)
+      });
+    }
+  }
 });
 
 BattleJS.Player = React.createClass({
@@ -345,19 +356,17 @@ BattleJS.Cell = React.createClass({
     // override to show where ships are for debugging
     //if (cell.shipIdx !== null) cellContents = cell.shipIdx;
 
-    return <td style={styles} onClick={this.clickHandler}>{cellContents}</td>
-  },
+    const tdOpts = {
+      'data-pidx': pidx,
+      'data-cell-x': cell.x,
+      'data-cell-y': cell.y
+    };
 
-  clickHandler: function() {
-    if (!this.props.cell.hit) {
-      Store.store.dispatch({
-        type: 'ATTACK',
-        pidx: this.props.pidx,
-        x: this.props.cell.x,
-        y: this.props.cell.y
-      });
-    }
-    return;
+    return (
+      <td style={styles} {...tdOpts}>
+        {cellContents}
+      </td>
+    )
   }
 });
 
