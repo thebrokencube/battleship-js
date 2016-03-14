@@ -1,8 +1,8 @@
 const Board = {
   Cell: {
     generate: function(x, y) {
-      return { x, y, hitState: '', shipIdx: null }
-    }
+      return { x, y, hit: false, shipIdx: null }
+    },
   },
 
   // returns: 2d array of `Board.Cell`s
@@ -47,6 +47,29 @@ const Ship = {
       }
     })
   },
+
+  isSunk: function(state, pidx, shipIdx) {
+    const player = state.players[pidx], ship = player.ships[shipIdx];
+
+    ship.sunk = _.reduce(ship.coordinates,
+      (allHit, coordinate) => {
+        const cell = player.board[coordinate.x][coordinate.y];
+        return allHit && cell.hit;
+      },
+      true
+    );
+    state.players[pidx].ships[shipIdx] = ship;
+    console.log('IS SUNK', state.players[pidx].ships[shipIdx].sunk, ship);
+
+    // check if game over
+    const allSunk = _.reduce(state.players[pidx].ships,
+      (shipsSunk, ship) => { return shipsSunk && ship.sunk },
+      true
+    );
+    if (allSunk) state.winnerIdx = pidx ? 0 : 1;
+
+    return state;
+  }
 }
 
 const GameBoard = {
@@ -121,36 +144,47 @@ const Game = {
       players: [Game.Player.generate(0), Game.Player.generate(1)]
     }
   },
-}
 
-/*
-// REDUX
+  // perform an attack if possible
+  attack: function(state, action) {
+    if (state.winnerIdx !== null) return state;
 
-const Store = {store: null};
-Store.Reducers = {
-  reset: function(state = {}, action) {
-    if (action.type === 'RESET') return Game.generate();
-    else return state;
-  },
+    const { type, pidx, x, y } = action;
+    let cell = _.clone(state.players[pidx].board[x][y]);
 
-  action: function(state = {}, action) {
+    // if attacking the correct player and the cell hasn't been hit yet
+    if (pidx !== state.currentPlayerIdx && !cell.hit) {
+      cell.hit = true;
+      state.players[pidx].board[x][y] = cell;
+      state.turn++;
+      state.currentPlayerIdx = state.currentPlayerIdx ? 0 : 1;
+
+      // update ship
+      if (cell.shipIdx !== null) {
+        state = Ship.isSunk(state, pidx, cell.shipIdx)
+      }
+    }
+
     return state;
   }
 }
 
-const reducers = Redux.combineReducers(Store.Reducers);
-Store.store = Redux.createStore(reducers, {});
-//store.subscribe(() => console.log('SUBSCRIBED.RESET:', store.getState().reset))
-//store.dispatch({type: 'RESET'});
+// REDUX
 
-// USE WHEN INTEGRATING REDUX PROPERLY
-ReactDOM.render(
-  <ReactRedux.Provider store={Store.store}>
-    <BattleJS.Game />
-  </ReactRedux.Provider>,
-  document.getElementById('main')
-);
-*/
+const Store = {
+  store: null,
+  reducer: function(state = {}, action) {
+    switch (action.type) {
+      case 'RESET':
+        return Game.generate();
+      case 'ATTACK':
+        return Game.attack(state, action);
+      default:
+        return state;
+    }
+  }
+};
+
 
 // REACT
 
@@ -159,9 +193,16 @@ BattleJS.Game = React.createClass({
   getInitialState: function() { return {} },
 
   componentDidMount: function() {
-    // generate default game state
-    const gameState = Game.generate();
-    return this.setState({gameState})
+    this._setupStore();
+    return Store.store.dispatch({type: 'RESET'});
+  },
+
+  _setupStore: function() {
+    Store.store = Redux.createStore(Store.reducer, {});
+    Store.store.subscribe(() => {
+      const gameState = Store.store.getState();
+      this.setState({gameState});
+    });
   },
 
   render: function() {
@@ -170,19 +211,36 @@ BattleJS.Game = React.createClass({
     else {
       return (
         <div>
-          <h1>LOADED!</h1>
+          {this.renderGameOverState()}
           {this.renderPlayers()}
         </div>
       )
     }
   },
 
+  renderGameOverState: function() {
+    if (this.state.gameState.winnerIdx !== null) {
+      const text = 'Player ' + this.state.gameState.winnerIdx + ' wins! Again?';
+      return (
+        <div>
+          <h1>{text}</h1>
+          <div
+            className='btn btn-default'
+            onClick={() => { Store.store.dispatch({type: 'RESET'}) }}
+          >
+            RESET
+          </div>
+        </div>
+      )
+    } else return;
+  },
+
   renderPlayers: function() {
     const players = _.map(this.state.gameState.players, (player) => {
       return (
-        <BattleJS.Player
-          key={'p_'+player.idx}
-          player={player}
+        <BattleJS.Player key={'p_' + player.idx}
+          pidx={player.idx}
+          {...this.state}
         />
       )
     });
@@ -194,10 +252,14 @@ BattleJS.Game = React.createClass({
 
 BattleJS.Player = React.createClass({
   render: function() {
+    let playerStyles = {textDecoration: 'underline'};
+    if (this.props.pidx === this.props.gameState.currentPlayerIdx)
+      _.extend(playerStyles, {color: 'red'});
+
     return (
       <div style={{float: 'left', marginLeft: 20}}>
-        <h2>{'Player ' + this.props.player.idx}</h2>
-        <BattleJS.Board board={this.props.player.board} />
+        <h2 style={playerStyles}>{'Player ' + this.props.pidx}</h2>
+        <BattleJS.Board {...this.props} />
       </div>
     )
   }
@@ -208,39 +270,94 @@ BattleJS.Board = React.createClass({
     return (
       <div>
         <h3>Board</h3>
-        {this.renderBoard()}
+        {this.renderOpponentBoard()}
       </div>
     )
   },
 
-  renderBoard: function() {
-    const rows = _.map(this.props.board, (row) => { return this.renderRow(row) });
+  renderOpponentBoard: function() {
+    const oidx = this.props.pidx ? 0 : 1,
+      state = this.props.gameState,
+      board = state.players[oidx].board,
+      rows = _.map(board, (row, ridx) => {
+        return this.renderRow(row, ridx, oidx, state)
+      });
+
     return (
-      <table>
-        <tbody>{rows}</tbody>
+      <table className='table table-bordered'>
+        <tbody>
+          {this.renderLabelRow()}
+          {rows}
+        </tbody>
       </table>
     )
   },
 
-  renderRow: function(row) {
-    const cells = _.map(row, (cell) => { return <BattleJS.Cell cell={cell} /> });
+  renderRow: function(row, ridx, pidx, gameState) {
+    const styles = { width: 50, height: 50, textAlign: 'center', verticalAlign: 'middle' },
+      cells = _.map(row, (cell) => {
+        const key = _.join(['cell', pidx, cell.x, cell.y], '_');
+        return <BattleJS.Cell {...{key, pidx, cell, gameState}} />
+      });
+
+    return (
+      <tr>
+        <td className='board-label' style={styles}>
+          <strong>{ridx}</strong>
+        </td>
+        {cells}
+      </tr>
+    )
+  },
+
+  renderLabelRow: function() {
+    const styles = { width: 50, height: 50, textAlign: 'center', verticalAlign: 'middle' };
+    let cells = [<td></td>];
+    for (let i = 0; i < 10; i++)
+      cells.push(
+        <td className='board-label' style={styles}>
+          <strong>{i}</strong>
+        </td>
+      );
     return <tr>{cells}</tr>
   }
 });
 
 BattleJS.Cell = React.createClass({
   render: function() {
-    let cellContents = '-',
-      styles = { width: 25, height: 25, textAlign: 'center', verticalAlign: 'middle' };
-    if (this.props.cell.shipIdx !== null) {
-      cellContents = this.props.cell.shipIdx;
-      styles = _.extend(styles, { backgroundColor: 'gray' });
+    let { cell, gameState, pidx } = this.props,
+      cellContents = '',
+      styles = { width: 50, height: 50, textAlign: 'center', verticalAlign: 'middle' };
+
+    if (cell.hit && cell.shipIdx === null) {
+      // attacked but missed
+      cellContents = '-';
+      _.extend(styles, { backgroundColor: 'gray' });
+    } else if (cell.hit) {
+      // attacked and hit
+      const ship = gameState.players[pidx].ships[cell.shipIdx];
+      if (ship.sunk) {
+        cellContents = cell.shipIdx;
+        _.extend(styles, { color: 'white', backgroundColor: 'green' });
+      } else _.extend(styles, { backgroundColor: 'red' });
     }
 
+    // override to show where ships are for debugging
+    //if (cell.shipIdx !== null) cellContents = cell.shipIdx;
 
-    return (
-      <td style={styles}>{cellContents}</td>
-    )
+    return <td style={styles} onClick={this.clickHandler}>{cellContents}</td>
+  },
+
+  clickHandler: function() {
+    if (!this.props.cell.hit) {
+      Store.store.dispatch({
+        type: 'ATTACK',
+        pidx: this.props.pidx,
+        x: this.props.cell.x,
+        y: this.props.cell.y
+      });
+    }
+    return;
   }
 });
 
