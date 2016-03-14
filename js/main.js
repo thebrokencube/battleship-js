@@ -123,54 +123,130 @@ const Game = {
   },
 }
 
-
-
-const gameState = Game.generate();
-console.log(gameState);
-
 /*
 // REDUX
 
-const Store = {};
+const Store = {store: null};
 Store.Reducers = {
-  attack: function(state, action) {
+  reset: function(state = {}, action) {
+    if (action.type === 'RESET') return Game.generate();
+    else return state;
+  },
 
+  action: function(state = {}, action) {
+    return state;
   }
 }
 
-Store.Reducers.counter = (state = 0, action) => {
-  switch (action.type) {
-    case 'INCREMENT':
-      return state + 1;
-    case 'DECREMENT':
-      return state - 1;
-    default:
-      return state;
-  }
-};
+const reducers = Redux.combineReducers(Store.Reducers);
+Store.store = Redux.createStore(reducers, {});
+//store.subscribe(() => console.log('SUBSCRIBED.RESET:', store.getState().reset))
+//store.dispatch({type: 'RESET'});
 
-let store = Redux.createStore(Store.Reducers.counter);
-
-store.subscribe(() => console.log(store.getState()))
-
-console.log(store.getState());
-store.dispatch({type: 'INCREMENT'});
-store.dispatch({type: 'INCREMENT'});
-store.dispatch({type: 'DECREMENT'});
+// USE WHEN INTEGRATING REDUX PROPERLY
+ReactDOM.render(
+  <ReactRedux.Provider store={Store.store}>
+    <BattleJS.Game />
+  </ReactRedux.Provider>,
+  document.getElementById('main')
+);
+*/
 
 // REACT
 
 const BattleJS = {};
-BattleJS.App = React.createClass({
-  render: () => {
+BattleJS.Game = React.createClass({
+  getInitialState: function() { return {} },
+
+  componentDidMount: function() {
+    // generate default game state
+    const gameState = Game.generate();
+    return this.setState({gameState})
+  },
+
+  render: function() {
+    if (this.state.gameState === undefined)
+      return <h1>Loading...</h1>;
+    else {
+      return (
+        <div>
+          <h1>LOADED!</h1>
+          {this.renderPlayers()}
+        </div>
+      )
+    }
+  },
+
+  renderPlayers: function() {
+    const players = _.map(this.state.gameState.players, (player) => {
+      return (
+        <BattleJS.Player
+          key={'p_'+player.idx}
+          player={player}
+        />
+      )
+    });
+
+    return <div>{players}</div>;
+  }
+
+});
+
+BattleJS.Player = React.createClass({
+  render: function() {
     return (
-      <h1>OHAI</h1>
-    );
+      <div style={{float: 'left', marginLeft: 20}}>
+        <h2>{'Player ' + this.props.player.idx}</h2>
+        <BattleJS.Board board={this.props.player.board} />
+      </div>
+    )
   }
 });
 
+BattleJS.Board = React.createClass({
+  render: function() {
+    return (
+      <div>
+        <h3>Board</h3>
+        {this.renderBoard()}
+      </div>
+    )
+  },
+
+  renderBoard: function() {
+    const rows = _.map(this.props.board, (row) => { return this.renderRow(row) });
+    return (
+      <table>
+        <tbody>{rows}</tbody>
+      </table>
+    )
+  },
+
+  renderRow: function(row) {
+    const cells = _.map(row, (cell) => { return <BattleJS.Cell cell={cell} /> });
+    return <tr>{cells}</tr>
+  }
+});
+
+BattleJS.Cell = React.createClass({
+  render: function() {
+    let cellContents = '-',
+      styles = { width: 25, height: 25, textAlign: 'center', verticalAlign: 'middle' };
+    if (this.props.cell.shipIdx !== null) {
+      cellContents = this.props.cell.shipIdx;
+      styles = _.extend(styles, { backgroundColor: 'gray' });
+    }
+
+
+    return (
+      <td style={styles}>{cellContents}</td>
+    )
+  }
+});
+
+
+
 ReactDOM.render(
-  <BattleJS.App />,
+  <BattleJS.Game />,
   document.getElementById('main')
 );
-*/
